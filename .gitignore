@@ -1,0 +1,10 @@
+train_ckpt
+ckpt
+data
+*.pyc
+__pycache__
+*.txt
+*.out
+tmp*
+figs/
+*.egg-info
