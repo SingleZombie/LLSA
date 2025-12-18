@@ -8,3 +8,5 @@ __pycache__
 tmp*
 figs/
 *.egg-info
+*pth
+llsa_benchmark

@@ -1,0 +1,5 @@
+{
+    "_class_name": "FlowMatchEulerDiscreteTrainingScheduler",
+    "_diffusers_version": "0.25.0",
+    "num_train_timesteps": 1000
+}

@@ -1,0 +1,29 @@
+{
+    "base": {
+        "logging_dir": "logs",
+        "output_dir": "train_ckpt/model_rope_dit_S_128_rms",
+        "checkpointing_steps": 8750,
+        "valid_epochs": 2,
+        "train_dataset_name": "merkol/ffhq-256",
+        "resolution": 128,
+        "train_batch_size": 16,
+        "dataloader_num_workers": 8,
+        "num_epochs": 10,
+        "resume_from_checkpoint": "latest",
+        "checkpoints_total_limit": 5,
+        "mixed_precision": "bf16"
+    },
+    "dit": {
+        "model_config": "configs/models/model_rope_dit_S_128_rms.json",
+        "scheduler_config": "configs/schedulers/flow_matching_scheduler_s2.json",
+        "model_pretrained_path": "train_ckpt/model_rope_dit_S_32_rms/denoiser",
+        "learning_rate": 1e-4,
+        "valid_batch_size": 20,
+        "valid_loops": 50,
+        "num_inference_steps": 20,
+        "use_ema": true,
+        "is_flow_matching": true,
+        "valid_fid": true,
+        "fid_path": "ffhq_128.pth"
+    }
+}
