@@ -3,7 +3,7 @@
     <a href="https://zhouyifan.net/about/">Yifan Zhou<sup>1</sup></a>,
     <a href="https://github.com/xizaoqu">Zeqi Xiao<sup>1</sup></a>,
     <a href="https://github.com/wtybest">Tianyi Wei<sup>1</sup></a>,
-    <a href="https://williamyang1991.github.io/">Shuai Yang<sup>2</sup></a>, and
+    <a href="https://williamyang1991.github.io/">Shuai Yang<sup>2</sup></a>
     <a href="https://xingangpan.github.io/">Xingang Pan<sup>1</sup></a>  
     <br>
     <sup>1</sup>S-Lab, Nanyang Technological University  
@@ -51,7 +51,7 @@ Replace the standard scaled dot-product attention with LLSA:
 ```diff
 from llsa.kernel.torch_op.flash_sparse_attention_res_2 import llsa_l2
 
-- attn_output = hidden_states = F.scaled_dot_product_attention(
+- attn_output = F.scaled_dot_product_attention(
 -                query, key, value, dropout_p=0.0, is_causal=False)
 
 + attn_output = llsa_l2(q, k, v, topk=8, block_size=16)
