@@ -14,7 +14,7 @@
 
 <strong>Paper:</strong> <a href="https://arxiv.org">https://arxiv.org</a>  
 <br>
-Official pyTorch implementation of Log-linear Sparse Attention (LLSA)
+Official PyTorch implementation of Log-linear Sparse Attention (LLSA)
 
 
 <p align="center">
