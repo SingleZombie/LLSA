@@ -4,6 +4,7 @@ from ..triton.sparse_attention_res_2 import (sparse_indices_attn_res_2_2_fwd,
                                              sparse_indices_attn_res_scatter_2_2_bwd_v2,
                                              )
 from ..triton.topk import gen_sparse_indices, compute_topk_indices_sparse
+from ..triton.mean_pool import mean_pool1d
 
 
 class FlashSparseResidualAttentionL2(Function):
@@ -42,3 +43,17 @@ class FlashSparseResidualAttentionL2(Function):
 
 
 flash_sparse_residual_attention_l2_op = FlashSparseResidualAttentionL2.apply
+
+
+def llsa_l2(q, k, v, topk1=8, topk2=8, block_size=16):
+    pq1 = mean_pool1d(q, block_size)
+    pk1 = mean_pool1d(k, block_size)
+    pv1 = mean_pool1d(v, block_size)
+
+    pq2 = mean_pool1d(pq1, block_size)
+    pk2 = mean_pool1d(pk1, block_size)
+    pv2 = mean_pool1d(pv1, block_size)
+
+    return flash_sparse_residual_attention_l2_op(q, k, v, pq1, pk1, pv1, pq2, pk2, pv2,
+                                                 topk1,
+                                                 topk2, block_size, block_size * block_size, block_size)

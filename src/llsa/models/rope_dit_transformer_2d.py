@@ -32,8 +32,8 @@ from diffusers.models.attention_processor import Attention
 from diffusers.models.embeddings import SinusoidalPositionalEmbedding, Timesteps, TimestepEmbedding, LabelEmbedding
 from diffusers.models.normalization import AdaLayerNorm, AdaLayerNormContinuous, FP32LayerNorm
 
-from ..kernel.torch_op.flash_sparse_attention_res_1 import flash_sparse_residual_attention_l1_op
-from ..kernel.torch_op.flash_sparse_attention_res_2 import flash_sparse_residual_attention_l2_op
+from ..kernel.torch_op.flash_sparse_attention_res_1 import llsa_l1
+from ..kernel.torch_op.flash_sparse_attention_res_2 import llsa_l2
 from ..kernel.triton.rope import my_rope_fn
 from ..kernel.triton.mean_pool import mean_pool1d
 
@@ -190,14 +190,6 @@ class RopeAttnProcessor:
         batch_size, seq_len, channel = hidden_states.shape
         height = int(seq_len ** 0.5)
 
-        # if input_ndim == 4:
-        #     batch_size, channel, height, width = hidden_states.shape
-        #     hidden_states = hidden_states.view(
-        #         batch_size, channel, height * width).transpose(1, 2)
-        # elif input_ndim == 3:
-        #     batch_size, seq_len, channel = hidden_states.shape
-        #     height = width = int(seq_len ** 0.5)
-
         batch_size = hidden_states.shape[0]
 
         # `sample` projections.
@@ -245,12 +237,8 @@ class RopeAttnProcessor:
             query = my_rope_fn(query, image_rotary_emb_0)
             key = my_rope_fn(key, image_rotary_emb_0)
 
-            pq = mean_pool1d(query, blsz)
-            pk = mean_pool1d(key, blsz)
-            pv = mean_pool1d(value, blsz)
-
-            hidden_states = flash_sparse_residual_attention_l1_op(query, key, value, pq, pk, pv,
-                                                                  self.sparse_topk[1], blsz, blsz)
+            hidden_states = llsa_l1(
+                query, key, value, self.sparse_topk[1], blsz)
 
         elif self.attn_type == RopeAttnProcessor.SPARSE_L2:
             image_rotary_emb_0 = self.fetch_rope_emb(
@@ -259,17 +247,8 @@ class RopeAttnProcessor:
             query = my_rope_fn(query, image_rotary_emb_0)
             key = my_rope_fn(key, image_rotary_emb_0)
 
-            pq1 = mean_pool1d(query, blsz)
-            pk1 = mean_pool1d(key, blsz)
-            pv1 = mean_pool1d(value, blsz)
-
-            pq2 = mean_pool1d(pq1, blsz)
-            pk2 = mean_pool1d(pk1, blsz)
-            pv2 = mean_pool1d(pv1, blsz)
-
-            hidden_states = flash_sparse_residual_attention_l2_op(query, key, value, pq1, pk1, pv1, pq2, pk2, pv2,
-                                                                  self.sparse_topk[1],
-                                                                  self.sparse_topk[0], blsz, blsz * blsz, blsz)
+            hidden_states = llsa_l2(query, key, value, self.sparse_topk[1],
+                                    self.sparse_topk[0], blsz)
 
         hidden_states = hidden_states.transpose(1, 2).reshape(
             batch_size, -1, attn.heads * v_head_dim)
