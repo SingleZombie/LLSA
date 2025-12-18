@@ -1,0 +1,10 @@
+accelerate
+diffusers
+datasets
+line_profiler
+torchmetrics[image]
+omegaconf
+lpips
+einops
+tensorboard
+xformers
