@@ -12,7 +12,7 @@
 </p>
 
 
-<strong>Paper:</strong> <a href="https://arxiv.org">https://arxiv.org</a>  
+<strong>Paper:</strong> <a href="https://arxiv.org/abs/2512.16615">https://arxiv.org/abs/2512.16615</a>  
 <br>
 Official PyTorch implementation of Log-linear Sparse Attention (LLSA)
 
