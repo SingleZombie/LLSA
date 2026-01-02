@@ -46,7 +46,20 @@ Official PyTorch implementation of Log-linear Sparse Attention (LLSA)
     ```
 
 ## Minimum Usage
-Replace the standard scaled dot-product attention with LLSA:
+Replace the standard scaled dot-product attention with LLSA.
+
+For sequence length `< 16384 (128x128)` :
+
+```diff
+from llsa.kernel.torch_op.flash_sparse_attention_res_1 import llsa_l1
+
+- attn_output = F.scaled_dot_product_attention(
+-                query, key, value, dropout_p=0.0, is_causal=False)
+
++ attn_output = llsa_l1(query, key, value, block_size=16)
+```
+
+For sequence length `>= 16384 (128x128)` :
 
 ```diff
 from llsa.kernel.torch_op.flash_sparse_attention_res_2 import llsa_l2
@@ -54,7 +67,7 @@ from llsa.kernel.torch_op.flash_sparse_attention_res_2 import llsa_l2
 - attn_output = F.scaled_dot_product_attention(
 -                query, key, value, dropout_p=0.0, is_causal=False)
 
-+ attn_output = llsa_l2(q, k, v, block_size=16)
++ attn_output = llsa_l2(query, key, value, block_size=16)
 ```
 
 > **Note:**  
