@@ -117,7 +117,7 @@ def _sparse_indices_attn_res_fwd(
     m_ptrs = (M + cur_b * stride_mb + cur_h * stride_mh
               + offsets_m * stride_mm)
 
-    tl.store(m_ptrs, m_i, mask=offsets_m < n_ctx)
+    tl.store(m_ptrs, m_i, mask=offsets_m < m_ctx)
 
 
 def sparse_indices_attn_res_fwd(q, k, v, pk, pv, indices,
@@ -335,6 +335,7 @@ def _attn_bwd_res_dpkv(DPK, DPV,
                        stride_qb, stride_qh, stride_qm, stride_qd,
                        stride_dob, stride_doh, stride_dom, stride_dod,
                        stride_pkb, stride_pkh, stride_pkn, stride_pkd,
+                       token_weight,
                        H, n_ctx, scale,
                        BLOCK_M: tl.constexpr,
                        BLOCK_N: tl.constexpr,
@@ -386,7 +387,7 @@ def _attn_bwd_res_dpkv(DPK, DPV,
         c_m = c_m[:, None]
 
         qk = tl.dot(q, kT).to(tl.float32)
-        p = tl.math.exp(qk - c_m)
+        p = tl.math.exp(qk - c_m) * token_weight
 
         dp = tl.dot(do, vT)
         ds = p * (dp - Di[:, None])
@@ -406,8 +407,8 @@ def sparse_indices_attn_res_scatter_bwd_v2(do, q, k, v, pk, pv, o, m, indices,
     dq = torch.empty_like(q)
     dk = torch.empty_like(k)
     dv = torch.empty_like(v)
-    dpk = torch.empty_like(pk)
-    dpv = torch.empty_like(pv)
+    dpk = torch.zeros_like(pk)
+    dpv = torch.zeros_like(pv)
     scale = 1 / math.sqrt(q.size(-1))
 
     offsets, flat_indices = transpose_indices(indices)
@@ -463,6 +464,7 @@ def sparse_indices_attn_res_scatter_bwd_v2(do, q, k, v, pk, pv, o, m, indices,
         q.stride(0), q.stride(1), q.stride(2), q.stride(3),
         do.stride(0), do.stride(1), do.stride(2), do.stride(3),
         pk.stride(0), pk.stride(1), pk.stride(2), pk.stride(3),
+        token_weight,
         N_HEAD, M_CTX, scale,
         block_size, BLOCK_N,
         HEAD_DIM=HEAD_DIM,
