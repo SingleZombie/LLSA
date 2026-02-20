@@ -1,0 +1,15 @@
+{
+    "_class_name": "RopeDiTTransformer2DModel",
+    "num_attention_heads": 6,
+    "attention_head_dim": 64,
+    "num_layers": 12,
+    "in_channels": 3,
+    "out_channels": 3,
+    "patch_size": 1,
+    "sample_size": 32,
+    "axes_dims_rope": [
+        32,
+        32
+    ],
+    "rope_size": 32
+}
