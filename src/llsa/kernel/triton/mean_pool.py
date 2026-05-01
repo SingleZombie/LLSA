@@ -7,6 +7,7 @@ import triton.language as tl
 def _mean_pool1d_bhsc_fwd(X, Y,
                           stride_xb, stride_xh, stride_xs, stride_xc,
                           stride_yb, stride_yh, stride_ys, stride_yc,
+                          s_ctx,
                           K,
                           NUM_HEAD: tl.constexpr,
                           HEAD_DIM: tl.constexpr):
@@ -24,10 +25,13 @@ def _mean_pool1d_bhsc_fwd(X, Y,
         stride_yh + pid_s * stride_ys + offs_c * stride_yc
 
     acc = tl.zeros([HEAD_DIM], X.dtype.element_ty)
+    seg_start = pid_s * K
+    valid_len = tl.minimum(K, s_ctx - seg_start)
     for t in range(K):
-        acc += tl.load(x_ptrs)
+        mask_s = (seg_start + t) < s_ctx
+        acc += tl.load(x_ptrs, mask=mask_s, other=0.0)
         x_ptrs += stride_xs
-    acc = acc / K
+    acc = acc / valid_len
     tl.store(y_ptrs, acc)
 
 
@@ -35,6 +39,7 @@ def _mean_pool1d_bhsc_fwd(X, Y,
 def _mean_pool1d_bhsc_bwd(dY, dX,
                           stride_dyb, stride_dyh, stride_dys, stride_dyc,
                           stride_dxb, stride_dxh, stride_dxs, stride_dxc,
+                          s_ctx,
                           K,
                           NUM_HEAD: tl.constexpr,
                           HEAD_DIM: tl.constexpr):
@@ -51,10 +56,13 @@ def _mean_pool1d_bhsc_bwd(dY, dX,
     dy_ptrs = dY + cur_b * stride_dyb + cur_h * \
         stride_dyh + pid_s * stride_dys + offs_c * stride_dyc
 
-    grad = tl.load(dy_ptrs) / K
+    seg_start = pid_s * K
+    valid_len = tl.minimum(K, s_ctx - seg_start)
+    grad = tl.load(dy_ptrs) / valid_len
 
     for t in range(K):
-        tl.store(dx_ptrs, grad)
+        mask_s = (seg_start + t) < s_ctx
+        tl.store(dx_ptrs, grad, mask=mask_s)
         dx_ptrs += stride_dxs
 
 
@@ -62,6 +70,7 @@ def _mean_pool1d_bhsc_bwd(dY, dX,
 def _mean_pool1d_bsc_fwd(X, Y,
                          stride_xb, stride_xs, stride_xc,
                          stride_yb, stride_ys, stride_yc,
+                         s_ctx,
                          c_ctx,
                          K,
                          HEAD_BLOCK: tl.constexpr):
@@ -78,10 +87,13 @@ def _mean_pool1d_bsc_fwd(X, Y,
         pid_s * stride_ys + offs_c * stride_yc
 
     acc = tl.zeros([HEAD_BLOCK], X.dtype.element_ty)
-    for _ in range(K):
-        acc += tl.load(x_ptrs, mask=mask_c, other=0.0)
+    seg_start = pid_s * K
+    valid_len = tl.minimum(K, s_ctx - seg_start)
+    for t in range(K):
+        mask_s = (seg_start + t) < s_ctx
+        acc += tl.load(x_ptrs, mask=mask_c & mask_s, other=0.0)
         x_ptrs += stride_xs
-    acc = acc / K
+    acc = acc / valid_len
     tl.store(y_ptrs, acc, mask=mask_c)
 
 
@@ -89,6 +101,7 @@ def _mean_pool1d_bsc_fwd(X, Y,
 def _mean_pool1d_bsc_bwd(dY, dX,
                          stride_dyb, stride_dys, stride_dyc,
                          stride_dxb, stride_dxs, stride_dxc,
+                         s_ctx,
                          c_ctx,
                          K,
                          HEAD_BLOCK: tl.constexpr):
@@ -104,24 +117,27 @@ def _mean_pool1d_bsc_bwd(dY, dX,
     dy_ptrs = dY + pid_b * stride_dyb + \
         pid_s * stride_dys + offs_c * stride_dyc
 
-    grad = tl.load(dy_ptrs, mask_c, 0) / K
+    seg_start = pid_s * K
+    valid_len = tl.minimum(K, s_ctx - seg_start)
+    grad = tl.load(dy_ptrs, mask=mask_c, other=0) / valid_len
 
-    for _ in range(K):
-        tl.store(dx_ptrs, grad, mask_c)
+    for t in range(K):
+        mask_s = (seg_start + t) < s_ctx
+        tl.store(dx_ptrs, grad, mask=mask_c & mask_s)
         dx_ptrs += stride_dxs
 
 
 def mean_pool1d_bhsc_fwd(x, k):
     B, H, S, C = x.shape
-    assert S % k == 0
-    y = torch.empty((B, H, S // k, C), device=x.device, dtype=x.dtype)
+    S_out = triton.cdiv(S, k)
+    y = torch.empty((B, H, S_out, C), device=x.device, dtype=x.dtype)
 
-    grid = (S // k, B * H)
+    grid = (S_out, B * H)
     _mean_pool1d_bhsc_fwd[grid](
         x, y,
         x.stride(0), x.stride(1), x.stride(2), x.stride(3),
         y.stride(0), y.stride(1), y.stride(2), y.stride(3),
-        k, H, C
+        S, k, H, C
     )
     return y
 
@@ -130,28 +146,30 @@ class MeanPool1dFunction_BHSC(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, kernel_size: int):
         B, H, S, C = x.shape
-        assert S % kernel_size == 0
-        y = torch.empty((B, H, S // kernel_size, C),
+        S_out = triton.cdiv(S, kernel_size)
+        y = torch.empty((B, H, S_out, C),
                         device=x.device, dtype=x.dtype)
 
         # meta‑params
-        grid = (S // kernel_size, B * H)
+        grid = (S_out, B * H)
 
         _mean_pool1d_bhsc_fwd[grid](
             x, y,
             x.stride(0), x.stride(1), x.stride(2), x.stride(3),
             y.stride(0), y.stride(1), y.stride(2), y.stride(3),
-            kernel_size, H, C
+            S, kernel_size, H, C
         )
 
         ctx.kernel_size = kernel_size
+        ctx.seq_len = S
         return y
 
     @staticmethod
     def backward(ctx, dy):
         K = ctx.kernel_size
+        S = ctx.seq_len
         B, H, S_out, C = dy.shape
-        dx = torch.empty((B, H, S_out * K, C),
+        dx = torch.empty((B, H, S, C),
                          device=dy.device, dtype=dy.dtype)
 
         grid = (S_out, B * H)
@@ -160,7 +178,7 @@ class MeanPool1dFunction_BHSC(torch.autograd.Function):
             dy, dx,
             dy.stride(0), dy.stride(1), dy.stride(2), dy.stride(3),
             dx.stride(0), dx.stride(1), dx.stride(2), dx.stride(3),
-            K, H, C
+            S, K, H, C
         )
         return dx, None
 
@@ -169,29 +187,31 @@ class MeanPool1dFunction_BSC(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, kernel_size: int):
         B, S, C = x.shape
-        assert S % kernel_size == 0
-        y = torch.empty((B, S // kernel_size, C),
+        S_out = triton.cdiv(S, kernel_size)
+        y = torch.empty((B, S_out, C),
                         device=x.device, dtype=x.dtype)
 
         # meta‑params
         HEAD_BLOCK = 64
-        grid = (triton.cdiv(C, HEAD_BLOCK), S // kernel_size, B)
+        grid = (triton.cdiv(C, HEAD_BLOCK), S_out, B)
 
         _mean_pool1d_bsc_fwd[grid](
             x, y,
             x.stride(0), x.stride(1), x.stride(2),
             y.stride(0), y.stride(1), y.stride(2),
-            C, kernel_size, HEAD_BLOCK
+            S, C, kernel_size, HEAD_BLOCK
         )
 
         ctx.kernel_size = kernel_size
+        ctx.seq_len = S
         return y
 
     @staticmethod
     def backward(ctx, dy):
         K = ctx.kernel_size
+        S = ctx.seq_len
         B, S_out, C = dy.shape
-        dx = torch.empty((B, S_out * K, C),
+        dx = torch.empty((B, S, C),
                          device=dy.device, dtype=dy.dtype)
 
         HEAD_BLOCK = 64
@@ -201,7 +221,7 @@ class MeanPool1dFunction_BSC(torch.autograd.Function):
             dy, dx,
             dy.stride(0), dy.stride(1), dy.stride(2),
             dx.stride(0), dx.stride(1), dx.stride(2),
-            C, K, HEAD_BLOCK
+            S, C, K, HEAD_BLOCK
         )
         return dx, None
 

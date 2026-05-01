@@ -33,7 +33,9 @@ from diffusers.models.embeddings import SinusoidalPositionalEmbedding, Timesteps
 from diffusers.models.normalization import AdaLayerNorm, AdaLayerNormContinuous, FP32LayerNorm
 
 from ..kernel.torch_op.flash_sparse_attention_res_1 import llsa_l1
+from ..kernel.torch_op.flash_sparse_attention_res_1_varlen import llsa_l1_varlen
 from ..kernel.torch_op.flash_sparse_attention_res_2 import llsa_l2
+from ..kernel.torch_op.flash_sparse_attention_res_2_varlen import llsa_l2_varlen
 from ..kernel.triton.rope import my_rope_fn
 from ..kernel.triton.mean_pool import mean_pool1d
 
@@ -114,11 +116,15 @@ class RopeAttnProcessor:
     PIXEL = 1
     SPARSE_L1 = 2
     SPARSE_L2 = 3
+    SPARSE_L1_VARLEN = 4
+    SPARSE_L2_VARLEN = 5
 
     ATTN_ENUM_MAP = {
         'pixel': PIXEL,
         'sparse_l1': SPARSE_L1,
-        'sparse_l2': SPARSE_L2
+        'sparse_l2': SPARSE_L2,
+        'sparse_l1_varlen': SPARSE_L1_VARLEN,
+        'sparse_l2_varlen': SPARSE_L2_VARLEN,
     }
 
     def __init__(self, max_size: Tuple[int, int], rope_func,
@@ -249,6 +255,24 @@ class RopeAttnProcessor:
 
             hidden_states = llsa_l2(query, key, value, self.sparse_topk[1],
                                     self.sparse_topk[0], blsz)
+        elif self.attn_type == RopeAttnProcessor.SPARSE_L1_VARLEN:
+            image_rotary_emb_0 = self.fetch_rope_emb(
+                1 * pixel_size, query.device, query.dtype)
+
+            query = my_rope_fn(query, image_rotary_emb_0)
+            key = my_rope_fn(key, image_rotary_emb_0)
+
+            hidden_states = llsa_l1_varlen(
+                query, key, value, self.sparse_topk[1], blsz)
+        elif self.attn_type == RopeAttnProcessor.SPARSE_L2_VARLEN:
+            image_rotary_emb_0 = self.fetch_rope_emb(
+                1 * pixel_size, query.device, query.dtype)
+
+            query = my_rope_fn(query, image_rotary_emb_0)
+            key = my_rope_fn(key, image_rotary_emb_0)
+
+            hidden_states = llsa_l2_varlen(
+                query, key, value, self.sparse_topk[1], self.sparse_topk[0], blsz)
 
         hidden_states = hidden_states.transpose(1, 2).reshape(
             batch_size, -1, attn.heads * v_head_dim)

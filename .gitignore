@@ -10,3 +10,4 @@ figs/
 *.egg-info
 *pth
 llsa_benchmark
+*.log
