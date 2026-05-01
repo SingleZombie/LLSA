@@ -24,7 +24,8 @@ Official PyTorch implementation of Log-linear Sparse Attention (LLSA)
 ---
 
 ## Updates
-
+- **[5/2026]**: Support variable length.
+- **[4/2026]**: Paper is accepeted by CVPR 2026.
 - **[12/2025]**: Code released.
 
 ## Installation
