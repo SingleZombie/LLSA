@@ -51,7 +51,7 @@ Replace the standard scaled dot-product attention with LLSA.
 For sequence length `< 16384 (128x128)` :
 
 ```diff
-from llsa.kernel.torch_op.flash_sparse_attention_res_1 import llsa_l1
+from llsa.kernel.torch_op.flash_sparse_attention_res_1_varlen import llsa_l1_varlen as llsa_l1
 
 - attn_output = F.scaled_dot_product_attention(
 -                query, key, value, dropout_p=0.0, is_causal=False)
@@ -62,7 +62,7 @@ from llsa.kernel.torch_op.flash_sparse_attention_res_1 import llsa_l1
 For sequence length `>= 16384 (128x128)` :
 
 ```diff
-from llsa.kernel.torch_op.flash_sparse_attention_res_2 import llsa_l2
+from llsa.kernel.torch_op.flash_sparse_attention_res_2_varlen import llsa_l2_varlen as llsa_l2
 
 - attn_output = F.scaled_dot_product_attention(
 -                query, key, value, dropout_p=0.0, is_causal=False)
